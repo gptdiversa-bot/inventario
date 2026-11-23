@@ -76,7 +76,9 @@
   <div class="card hide" id="etapaQtd">
     <p class="prod-desc" id="pDesc"></p>
     <div class="meta">Código: <b id="pCod"></b></div>
-    <div class="meta">Localização: <b id="pLoc"></b></div>
+    <label style="margin-top:12px" for="loc">Localização</label>
+    <input id="loc" type="text" autocomplete="off" autocapitalize="characters" enterkeyhint="next" placeholder="Informe a localização" style="font-size:18px; text-transform:uppercase">
+    <div class="meta hide" id="locAviso" style="margin-top:4px"></div>
     <div class="meta hide" id="pSaldoLinha">Saldo sistema: <b id="pSaldo"></b></div>
     <div class="alerta hide" id="pAlerta"></div>
     <label style="margin-top:14px" id="lblQtd">Quantidade contada</label>
@@ -341,7 +343,11 @@
     $('etapaQtd').classList.remove('hide');
     $('pDesc').textContent = atual.descricao || '(sem descrição – será preenchida pela planilha)';
     $('pCod').textContent = atual.codigo;
-    $('pLoc').textContent = atual.localizacao || '—';
+    $('loc').value = atual.localizacao || '';
+    const sis = atual.localSistema;
+    $('locAviso').classList.toggle('hide', !!(atual.localizacao && (!sis || sis === atual.localizacao)));
+    $('locAviso').textContent = !atual.localizacao ? 'Sem localização cadastrada – informe se souber.'
+      : (sis && sis !== atual.localizacao ? 'No cadastro: ' + sis + ' (alterada na contagem)' : '');
     $('pSaldoLinha').classList.toggle('hide', !(MOSTRAR_SALDO && atual.saldo != null && atual.saldo !== ''));
     $('pSaldo').textContent = atual.saldo;
     const c = atual.ref;
@@ -368,6 +374,7 @@
     const q = $('qtd').value.trim().replace(',', '.');
     if (q === '' || isNaN(Number(q)) || Number(q) < 0) { toast('Informe uma quantidade válida', true); return; }
     const qn = Number(q);
+    const loc = $('loc').value.trim().toUpperCase();
 
     // Corrigindo um lançamento deste celular que ainda não foi enviado: altera direto na fila.
     if (alvoPendente) {
@@ -376,6 +383,7 @@
       if (p) {
         if (modo === 'somar') p.quantidade = String(Number(p.quantidade) + qn);
         else { p.quantidade = String(qn); if (p.modo === 'somar') p.modo = 'substituir'; }
+        if (loc) p.localizacao = loc;
         p.hora = Date.now();
         salvarFila();
         registrarUltimo(p);
@@ -394,7 +402,7 @@
     }
 
     const item = {
-      id: novoId(), codigo: atual.codigo, descricao: atual.descricao, localizacao: atual.localizacao,
+      id: novoId(), codigo: atual.codigo, descricao: atual.descricao, localizacao: loc,
       quantidade: String(qn), usuario: usuario, modo: modo, versao: versao, hora: Date.now()
     };
     enfileirar(item);
@@ -514,6 +522,7 @@
 
   $('codigo').addEventListener('keydown', e => { if (e.key === 'Enter') buscar(); });
   $('qtd').addEventListener('keydown', e => { if (e.key === 'Enter') salvar(); });
+  $('loc').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('qtd').focus(); } });
 
   usuario = lerLocal('inv_usuario');
   if (usuario) { $('btnUsuario').textContent = '👤 ' + usuario; carregarUltimos(); focarCodigo(); }
