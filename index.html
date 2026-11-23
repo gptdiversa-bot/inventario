@@ -276,19 +276,25 @@
   }
 
   async function carregarCatalogo(forcar) {
-    const salvo = lerJSON('inv_cat2', null);
-    if (!forcar && salvo && salvo.itens && Date.now() - salvo.gerado < 2 * 3600 * 1000) { montarCatalogo(salvo); return; }
+    let salvo = lerJSON('inv_cat2', null);
+    if (!(salvo && salvo.itens && salvo.itens.length)) salvo = null;
+    if (!salvo) {   // lista da versão anterior do app: usa enquanto não baixa a nova
+      const velho = lerJSON('inv_cat', null);
+      if (velho && velho.itens && velho.itens.length) salvo = { gerado: 0, itens: velho.itens };
+    }
+    if (!forcar && salvo && Date.now() - salvo.gerado < 2 * 3600 * 1000) { montarCatalogo(salvo); return; }
     const st = $('statusLista');
-    if (salvo && salvo.itens && !catMap.size) montarCatalogo(salvo);   // usa a lista anterior enquanto baixa a nova
+    if (salvo && !catMap.size) montarCatalogo(salvo);   // usa a lista anterior enquanto baixa a nova
     try {
       if (!catMap.size || forcar) { st.textContent = '⬇️ Atualizando lista de produtos…'; st.classList.remove('hide'); }
       const c = await api({ acao: 'catalogo' }, 120000);
+      if (!c.itens || !c.itens.length) throw new Error('lista de produtos vazia na planilha');   // não troca a lista boa por uma vazia
       montarCatalogo(c);
       gravarJSON('inv_cat2', c);
       st.classList.add('hide');
       if (forcar) toast('Lista atualizada: ' + c.itens.length + ' produtos');
     } catch (e) {
-      if (salvo && salvo.itens) montarCatalogo(salvo);
+      if (salvo) montarCatalogo(salvo);
       st.textContent = 'Não foi possível baixar a lista de produtos. Consultando a planilha a cada item.';
       setTimeout(() => st.classList.add('hide'), 5000);
     }
