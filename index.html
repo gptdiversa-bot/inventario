@@ -1,0 +1,324 @@
+teste `x` ${y}
+linha2<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Inventário</title>
+<meta name="theme-color" content="#1f4e79">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; font-family: system-ui, -apple-system, Roboto, sans-serif; background: #f2f4f7; color: #1d2433; }
+  header { background: #1f4e79; color: #fff; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 5; }
+  header h1 { font-size: 18px; margin: 0; }
+  header button { background: rgba(255,255,255,.15); color: #fff; border: 0; border-radius: 16px; padding: 6px 12px; font-size: 14px; }
+  main { padding: 14px; max-width: 520px; margin: 0 auto; padding-bottom: 220px; }
+  .card { background: #fff; border-radius: 12px; padding: 14px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  label { font-size: 13px; color: #5b6475; display: block; margin-bottom: 6px; }
+  .row { display: flex; gap: 8px; }
+  input { flex: 1; width: 100%; font-size: 20px; padding: 12px; border: 1px solid #cfd5df; border-radius: 10px; outline: none; }
+  input:focus { border-color: #1f4e79; }
+  .btn { border: 0; border-radius: 10px; padding: 14px; font-size: 17px; font-weight: 600; width: 100%; }
+  .btn-pri { background: #1f4e79; color: #fff; }
+  .btn-ok { background: #1e8e3e; color: #fff; }
+  .btn-warn { background: #e37400; color: #fff; }
+  .btn-sec { background: #e6e9ef; color: #1d2433; }
+  .btn-ico { width: auto; padding: 0 16px; }
+  label.btn-foto { display: block; text-align: center; color: #1d2433; font-size: 17px; margin-bottom: 0; cursor: pointer; }
+  #reader { width: 100%; border-radius: 12px; overflow: hidden; margin-bottom: 12px; display: none; }
+  .prod-desc { font-size: 18px; font-weight: 600; margin: 0 0 6px; }
+  .meta { font-size: 14px; color: #5b6475; }
+  .meta b { color: #1d2433; }
+  .alerta { background: #fff4e5; border-left: 4px solid #e37400; padding: 10px; border-radius: 8px; margin-top: 10px; font-size: 14px; }
+  .hide { display: none !important; }
+  #ultimos { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid #dde2ea; padding: 10px 14px 14px; box-shadow: 0 -2px 8px rgba(0,0,0,.06); }
+  #ultimos h3 { font-size: 13px; color: #5b6475; margin: 0 0 6px; font-weight: 600; }
+  .ult { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eef1f5; font-size: 14px; }
+  .ult:last-child { border-bottom: 0; }
+  .ult span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70%; }
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 20; padding: 16px; }
+  .modal { background: #fff; border-radius: 14px; padding: 18px; width: 100%; max-width: 420px; }
+  .modal h2 { font-size: 18px; margin: 0 0 10px; }
+  .modal p { margin: 0 0 14px; font-size: 15px; line-height: 1.45; }
+  .modal .btn { margin-top: 8px; }
+  #toast { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); background: #1e8e3e; color: #fff; padding: 10px 18px; border-radius: 20px; font-weight: 600; z-index: 30; display: none; }
+  #toast.erro { background: #c5221f; }
+  #carregando { position: fixed; inset: 0; background: rgba(255,255,255,.6); display: none; align-items: center; justify-content: center; z-index: 25; font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📦 Inventário</h1>
+  <button id="btnUsuario" onclick="trocarUsuario()">—</button>
+</header>
+
+<main>
+  <div id="reader"></div>
+
+  <!-- Etapa 1: código -->
+  <div class="card" id="etapaCodigo">
+    <label>Código do produto</label>
+    <div class="row">
+      <input id="codigo" autocomplete="off" autocapitalize="characters" placeholder="Digite ou escaneie" enterkeyhint="search">
+      <button class="btn btn-pri btn-ico" onclick="buscar()">OK</button>
+    </div>
+    <button class="btn btn-sec" style="margin-top:10px" id="btnCamera" onclick="alternarCamera()">📷 Ler código de barras</button>
+  </div>
+
+  <!-- Etapa 2: produto + quantidade -->
+  <div class="card hide" id="etapaQtd">
+    <p class="prod-desc" id="pDesc"></p>
+    <div class="meta">Código: <b id="pCod"></b></div>
+    <div class="meta">Localização: <b id="pLoc"></b></div>
+    <div class="meta hide" id="pSaldoLinha">Saldo sistema: <b id="pSaldo"></b></div>
+    <div class="alerta hide" id="pAlerta"></div>
+    <label style="margin-top:14px" id="lblQtd">Quantidade contada</label>
+    <input id="qtd" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="0">
+    <button class="btn btn-ok" style="margin-top:10px" id="btnSalvar" onclick="salvar()">Salvar</button>
+    <button class="btn btn-sec" style="margin-top:8px" onclick="cancelar()">Cancelar</button>
+  </div>
+</main>
+
+<div id="ultimos">
+  <h3>Seus últimos produtos contados</h3>
+  <div id="listaUltimos"><div class="meta">Nenhum ainda.</div></div>
+</div>
+
+<div id="modalWrap" class="modal-bg hide"><div class="modal" id="modal"></div></div>
+<div id="toast"></div>
+<div id="carregando">Aguarde…</div>
+
+<script>
+  const API = 'https://script.google.com/macros/s/AKfycbyCU61YsE4YKhppUMaui5a9KQ1HmnOYXn_UEP-U5On125fUfR61Xkfz30d0OMetf6qxnQ/exec';
+  const MOSTRAR_SALDO = false;
+  let usuario = '';
+  let atual = null;        // produto em contagem
+  let modo = 'novo';       // novo | substituir | somar
+  let versao = '';
+  let scanner = null;
+
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+
+  /* ---------- Comunicação com a planilha ---------- */
+  async function api(params) {
+    const url = API + '?' + new URLSearchParams(params).toString();
+    const r = await fetch(url, { redirect: 'follow' });
+    if (!r.ok) throw new Error('Falha de conexão (' + r.status + ')');
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.erro || 'Erro no servidor');
+    return j.dados;
+  }
+
+  /* ---------- Usuário ---------- */
+  function lerLocal(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+  function gravarLocal(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+  function pedirUsuario(obrigatorio) {
+    modal(`<h2>Quem está contando?</h2>
+      <input id="nomeUsuario" placeholder="Seu nome" value="${esc(usuario)}" autocomplete="name">
+      <button class="btn btn-pri" onclick="confirmarUsuario()">Começar</button>
+      ${obrigatorio ? '' : '<button class="btn btn-sec" onclick="fecharModal()">Cancelar</button>'}`);
+    setTimeout(() => $('nomeUsuario').focus(), 100);
+    $('nomeUsuario').addEventListener('keydown', e => { if (e.key === 'Enter') confirmarUsuario(); });
+  }
+  function confirmarUsuario() {
+    const n = $('nomeUsuario').value.trim();
+    if (!n) return;
+    usuario = n; gravarLocal('inv_usuario', n);
+    $('btnUsuario').textContent = '👤 ' + n;
+    fecharModal(); carregarUltimos(); focarCodigo();
+  }
+  function trocarUsuario() { pedirUsuario(false); }
+
+  /* ---------- Busca ---------- */
+  function buscar(cod) {
+    cod = (cod || $('codigo').value).trim();
+    if (!cod) return;
+    carregando(true);
+    api({ acao: 'buscar', codigo: cod })
+      .then(r => { carregando(false); r.descricao = (r.descricao || '').trim(); receberProduto(r); })
+      .catch(falha);
+  }
+
+  function receberProduto(r) {
+    atual = r; modo = 'novo'; versao = '';
+    if (!r.encontrado) {
+      bip(false);
+      modal(`<h2>Produto não cadastrado</h2>
+        <p>O código <b>${esc(r.codigo)}</b> não está na lista de produtos. Deseja contar mesmo assim?</p>
+        <button class="btn btn-warn" onclick="fecharModal(); atual.descricao='NÃO CADASTRADO'; verificarJaContado();">Contar mesmo assim</button>
+        <button class="btn btn-sec" onclick="fecharModal(); cancelar();">Cancelar</button>`);
+      return;
+    }
+    bip(true);
+    verificarJaContado();
+  }
+
+  function verificarJaContado() {
+    const c = atual.contagem;
+    if (c) {
+      modal(`<h2>⚠️ Produto já contado</h2>
+        <p><b>${esc(atual.descricao)}</b><br>
+        Contado por <b>${esc(c.usuario)}</b><br>
+        Quantidade: <b>${esc(c.quantidade)}</b><br>
+        Em: <b>${esc(c.dataHora)}</b></p>
+        <p>Deseja substituir o valor já contado?</p>
+        <button class="btn btn-warn" onclick="escolherModo('substituir')">Substituir</button>
+        <button class="btn btn-pri" onclick="escolherModo('somar')">Somar à contagem existente</button>
+        <button class="btn btn-sec" onclick="fecharModal(); cancelar();">Cancelar</button>`);
+    } else {
+      mostrarEtapaQtd();
+    }
+  }
+
+  function escolherModo(m) {
+    modo = m; versao = atual.contagem.versao;
+    fecharModal(); mostrarEtapaQtd();
+  }
+
+  function mostrarEtapaQtd() {
+    $('etapaCodigo').classList.add('hide');
+    $('etapaQtd').classList.remove('hide');
+    $('pDesc').textContent = atual.descricao || '(sem descrição)';
+    $('pCod').textContent = atual.codigo;
+    $('pLoc').textContent = atual.localizacao || '—';
+    $('pSaldoLinha').classList.toggle('hide', !(MOSTRAR_SALDO && atual.saldo !== null && atual.saldo !== ''));
+    $('pSaldo').textContent = atual.saldo;
+    const c = atual.contagem;
+    if (c && modo !== 'novo') {
+      $('pAlerta').classList.remove('hide');
+      $('pAlerta').innerHTML = (modo === 'somar' ? '➕ Somando à' : '🔁 Substituindo a') +
+        ` contagem de <b>${esc(c.usuario)}</b> (${esc(c.quantidade)} em ${esc(c.dataHora)})`;
+      $('lblQtd').textContent = modo === 'somar' ? 'Quantidade a somar' : 'Nova quantidade';
+      $('btnSalvar').textContent = modo === 'somar' ? 'Somar' : 'Substituir';
+      $('btnSalvar').className = 'btn btn-warn';
+    } else {
+      $('pAlerta').classList.add('hide');
+      $('lblQtd').textContent = 'Quantidade contada';
+      $('btnSalvar').textContent = 'Salvar';
+      $('btnSalvar').className = 'btn btn-ok';
+    }
+    $('qtd').value = '';
+    setTimeout(() => $('qtd').focus(), 150);
+  }
+
+  /* ---------- Salvar ---------- */
+  function salvar() {
+    const q = $('qtd').value.trim().replace(',', '.');
+    if (q === '' || isNaN(Number(q)) || Number(q) < 0) { toast('Informe uma quantidade válida', true); return; }
+    carregando(true);
+    api({ acao: 'salvar', dados: JSON.stringify({
+      codigo: atual.codigo, descricao: atual.descricao, localizacao: atual.localizacao,
+      quantidade: q, usuario: usuario, modo: modo, versao: versao
+    }) }).then(r => {
+      carregando(false);
+      if (r.conflito) {
+        atual.contagem = r.contagem;
+        modal(`<h2>⚠️ Atenção</h2>
+          <p>Enquanto você contava, <b>${esc(r.contagem.usuario)}</b> lançou
+          <b>${esc(r.contagem.quantidade)}</b> para este produto às <b>${esc(r.contagem.dataHora)}</b>.</p>
+          <p>O que deseja fazer com a sua quantidade (${esc(q)})?</p>
+          <button class="btn btn-warn" onclick="versao=atual.contagem.versao; modo='substituir'; fecharModal(); salvar();">Substituir</button>
+          <button class="btn btn-pri" onclick="versao=atual.contagem.versao; modo='somar'; fecharModal(); salvar();">Somar</button>
+          <button class="btn btn-sec" onclick="fecharModal(); cancelar();">Cancelar</button>`);
+        return;
+      }
+      toast('✔ Salvo: ' + r.quantidadeFinal);
+      if (navigator.vibrate) navigator.vibrate(60);
+      mostrarUltimos(r.ultimos);
+      cancelar(true);
+    }).catch(falha);
+  }
+
+  function cancelar(depoisDeSalvar) {
+    atual = null; modo = 'novo'; versao = '';
+    $('etapaQtd').classList.add('hide');
+    $('etapaCodigo').classList.remove('hide');
+    $('codigo').value = '';
+    if (depoisDeSalvar && usouCamera) ligarCamera(); else { usouCamera = false; focarCodigo(); }
+  }
+
+  /* ---------- Últimos 3 ---------- */
+  function carregarUltimos() {
+    api({ acao: 'ultimos', usuario: usuario }).then(mostrarUltimos).catch(() => {});
+  }
+  function mostrarUltimos(lista) {
+    if (!lista || !lista.length) { $('listaUltimos').innerHTML = '<div class="meta">Nenhum ainda.</div>'; return; }
+    $('listaUltimos').innerHTML = lista.map(u =>
+      `<div class="ult" data-cod="${esc(u.codigo)}" onclick="buscar(this.dataset.cod)">
+         <span>${esc(u.descricao || u.codigo)}<br><small class="meta">${esc(u.codigo)} · ${esc(u.hora)}</small></span>
+         <span><b>${esc(u.quantidade)}</b></span></div>`).join('');
+  }
+
+  /* ---------- Câmera ao vivo ---------- */
+  let cameraLigada = false, usouCamera = false;
+
+  function alternarCamera() { cameraLigada ? desligarCamera() : ligarCamera(); }
+
+  function ligarCamera() {
+    usouCamera = true;
+    $('reader').style.display = 'block';
+    $('btnCamera').textContent = '✖ Fechar câmera';
+    const F = Html5QrcodeSupportedFormats;
+    if (!scanner) {
+      scanner = new Html5Qrcode('reader', {
+        formatsToSupport: [F.EAN_13, F.EAN_8, F.CODE_128, F.CODE_39, F.CODE_93, F.CODABAR, F.UPC_A, F.UPC_E, F.ITF, F.QR_CODE],
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+        verbose: false
+      });
+    }
+    scanner.start(
+      { facingMode: 'environment' },
+      { fps: 15, qrbox: (w, h) => ({ width: Math.floor(w * 0.9), height: Math.floor(Math.min(h, w) * 0.45) }),
+        videoConstraints: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 }, advanced: [{ focusMode: 'continuous' }] } },
+      texto => { desligarCamera(true); texto = texto.trim(); $('codigo').value = texto; buscar(texto); },
+      () => {}
+    ).then(() => { cameraLigada = true; })
+     .catch(err => {
+        $('reader').style.display = 'none';
+        $('btnCamera').textContent = '📷 Ler código de barras';
+        usouCamera = false;
+        toast('Câmera bloqueada. Permita o acesso à câmera no navegador.', true);
+        console.log(err);
+     });
+  }
+
+  function desligarCamera(manterModo) {
+    if (!manterModo) usouCamera = false;
+    $('btnCamera').textContent = '📷 Ler código de barras';
+    if (scanner && cameraLigada) {
+      cameraLigada = false;
+      scanner.stop().catch(() => {}).finally(() => { $('reader').style.display = 'none'; });
+    } else { $('reader').style.display = 'none'; }
+  }
+
+  /* ---------- Utilitários ---------- */
+  function focarCodigo() { setTimeout(() => $('codigo').focus(), 100); }
+  function modal(html) { $('modal').innerHTML = html; $('modalWrap').classList.remove('hide'); }
+  function fecharModal() { $('modalWrap').classList.add('hide'); }
+  function carregando(s) { $('carregando').style.display = s ? 'flex' : 'none'; }
+  function falha(e) { carregando(false); toast('Erro: ' + (e && e.message ? e.message : e), true); }
+  function toast(msg, erro) {
+    const t = $('toast'); t.textContent = msg; t.className = erro ? 'erro' : '';
+    t.style.display = 'block'; clearTimeout(t._t); t._t = setTimeout(() => t.style.display = 'none', 2200);
+  }
+  function bip(ok) {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator(); o.frequency.value = ok ? 1200 : 300;
+      o.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + (ok ? 0.08 : 0.25));
+    } catch (e) {}
+  }
+
+  $('codigo').addEventListener('keydown', e => { if (e.key === 'Enter') buscar(); });
+  $('qtd').addEventListener('keydown', e => { if (e.key === 'Enter') salvar(); });
+
+  usuario = lerLocal('inv_usuario');
+  if (usuario) { $('btnUsuario').textContent = '👤 ' + usuario; carregarUltimos(); focarCodigo(); }
+  else pedirUsuario(true);
+</script>
+</body>
+</html>
