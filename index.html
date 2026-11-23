@@ -258,7 +258,7 @@
      são sincronizadas a cada 20 s. Na hora de gravar, a planilha confere de novo se
      alguém contou o mesmo item, então nenhum lançamento é sobrescrito sem aviso. */
   let catMap = new Map(), origMap = new Map();
-  const chaveOrig = s => semZeros(String(s).toUpperCase().replace(/[^A-Z0-9]/g, ''));
+  const chaveOrig = s => semZeros(String(s).toUpperCase().replace(/[\s-]/g, ''));
   const contMap = new Map();
   let contDesde = 0, sincronizando = false;
 
