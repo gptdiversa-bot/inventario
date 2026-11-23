@@ -58,6 +58,7 @@
     <button id="btnUsuario" onclick="trocarUsuario()">—</button>
   </div>
 </header>
+<div id="statusLista" class="meta hide" style="padding:8px 16px; background:#e8f0fe;"></div>
 
 <main>
   <div id="reader"></div>
@@ -172,6 +173,7 @@
       const envio = Object.assign({}, item); delete envio.conflito; delete envio.hora;
       const r = await api({ acao: 'salvar', dados: JSON.stringify(envio) }, 45000);
       enviando = null; falhas = 0; ultimoErro = '';
+      if (r.contagem) contMap.set(semZeros(r.codigo || item.codigo), r.contagem);
       if (r.conflito) {
         item.conflito = r.contagem;
         salvarFila();
@@ -250,11 +252,67 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden) processarFila(); });
   window.addEventListener('beforeunload', e => { if (fila.length) { e.preventDefault(); e.returnValue = ''; } });
 
+  /* ---------- Lista de produtos e contagens no celular (consulta instantânea) ----------
+     A lista de produtos é baixada uma vez (renovada a cada 12 h) e as contagens de todos
+     são sincronizadas a cada 20 s. Na hora de gravar, a planilha confere de novo se
+     alguém contou o mesmo item, então nenhum lançamento é sobrescrito sem aviso. */
+  let catMap = new Map();
+  const contMap = new Map();
+  let contDesde = 0, sincronizando = false;
+
+  function montarCatalogo(c) {
+    catMap = new Map();
+    for (const it of c.itens) {
+      const reg = { codigo: it[0], descricao: it[1], localizacao: it[2] };
+      catMap.set(semZeros(it[0]), reg);
+      if (it[3]) catMap.set(semZeros(it[3]), reg);
+    }
+  }
+
+  async function carregarCatalogo(forcar) {
+    const salvo = lerJSON('inv_cat', null);
+    if (!forcar && salvo && salvo.itens && Date.now() - salvo.gerado < 12 * 3600 * 1000) { montarCatalogo(salvo); return; }
+    const st = $('statusLista');
+    try {
+      st.textContent = '⬇️ Baixando lista de produtos… (só na primeira vez do dia)'; st.classList.remove('hide');
+      const c = await api({ acao: 'catalogo' }, 120000);
+      montarCatalogo(c);
+      gravarJSON('inv_cat', c);
+      st.classList.add('hide');
+      if (forcar) toast('Lista atualizada: ' + c.itens.length + ' produtos');
+    } catch (e) {
+      if (salvo && salvo.itens) montarCatalogo(salvo);
+      st.textContent = 'Não foi possível baixar a lista de produtos. Consultando a planilha a cada item.';
+      setTimeout(() => st.classList.add('hide'), 5000);
+    }
+  }
+
+  async function sincronizarContagens() {
+    if (sincronizando) return;
+    sincronizando = true;
+    try {
+      const r = await api({ acao: 'contagens', desde: contDesde }, 45000);
+      for (const c of r.itens) contMap.set(semZeros(c[0]), { quantidade: c[1], usuario: c[2], dataHora: c[3], versao: c[4], localizacao: c[5] });
+      if (r.agora > contDesde) contDesde = r.agora;
+    } catch (e) {} finally { sincronizando = false; }
+  }
+
+  function buscarLocal(cod) {
+    const p = catMap.get(semZeros(cod));
+    const c = contMap.get(semZeros(p ? p.codigo : cod)) || null;
+    return {
+      encontrado: !!p, codigo: p ? p.codigo : cod, descricao: p ? p.descricao : '',
+      localizacao: (c && c.localizacao) ? c.localizacao : (p ? p.localizacao : ''),
+      localSistema: p ? p.localizacao : '', saldo: null, contagem: c
+    };
+  }
+
   /* ---------- Usuário ---------- */
   function pedirUsuario(obrigatorio) {
     modal(`<h2>Quem está contando?</h2>
       <input id="nomeUsuario" placeholder="Seu nome" value="${esc(usuario)}" autocomplete="name">
       <button class="btn btn-pri" onclick="confirmarUsuario()">Começar</button>
+      ${obrigatorio ? '' : '<button class="btn btn-sec" onclick="fecharModal(); carregarCatalogo(true); contDesde = 0; sincronizarContagens();">⟳ Atualizar lista de produtos</button>'}
       ${obrigatorio ? '' : '<button class="btn btn-sec" onclick="fecharModal()">Cancelar</button>'}`);
     setTimeout(() => $('nomeUsuario').focus(), 100);
     $('nomeUsuario').addEventListener('keydown', e => { if (e.key === 'Enter') confirmarUsuario(); });
@@ -272,6 +330,11 @@
   async function buscar(cod) {
     cod = (cod || $('codigo').value).trim();
     if (!cod) return;
+    if (catMap.size) {
+      if (pendentesDo(cod).some(i => i.id === enviando)) { carregando(true); await esperarEnvio(); carregando(false); }
+      receberProduto(buscarLocal(cod));
+      return;
+    }
     carregando(true);
     try {
       if (pendentesDo(cod).some(i => i.id === enviando)) await esperarEnvio();
@@ -530,6 +593,10 @@
   atualizarIndicador();
   processarFila();
   setTimeout(mostrarConflitos, 300);
+  carregarCatalogo(false);
+  sincronizarContagens();
+  setInterval(sincronizarContagens, 20000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) sincronizarContagens(); });
 </script>
 </body>
 </html>
