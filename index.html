@@ -311,11 +311,15 @@
   }
 
   function buscarLocal(cod) {
+    cod = String(cod).trim();
     let p = catMap.get(semZeros(cod));
-    if (!p) {
-      const lista = origMap.get(chaveOrig(cod)) || [];
-      if (lista.length > 1) return { multiplos: lista, codigoDigitado: cod };
-      if (lista.length === 1) p = lista[0];
+    // Código interno completo (etiqueta bipada ou digitado com os zeros): vai direto ao produto.
+    // Senão, junta o interno (se houver) com os que têm esse código original e, se der mais de um, pergunta.
+    if (!(p && p.codigo.toUpperCase() === cod.toUpperCase())) {
+      const lista = (origMap.get(chaveOrig(cod)) || []).filter(x => x !== p);
+      const candidatos = p ? [Object.assign({ interno: true }, p)].concat(lista) : lista;
+      if (candidatos.length > 1) return { multiplos: candidatos, codigoDigitado: cod };
+      if (candidatos.length === 1) p = candidatos[0];
     }
     const c = contMap.get(semZeros(p ? p.codigo : cod)) || null;
     return {
@@ -379,9 +383,9 @@
     if (r.multiplos) {
       window.__lista = r.multiplos;
       modal(`<h2>Escolha o produto</h2>
-        <p>O código original <b>${esc(r.codigoDigitado)}</b> corresponde a <b>${r.multiplos.length}</b> produtos:</p>
+        <p>O código <b>${esc(r.codigoDigitado)}</b> corresponde a <b>${r.multiplos.length}</b> produtos:</p>
         <div class="lista-fila">${r.multiplos.map((p, i) => `<button class="btn btn-sec" style="text-align:left" onclick="escolherDaLista(${i})">
-          ${esc(p.descricao)}<br><small class="meta">${esc(p.codigo)}${p.localizacao ? ' · ' + esc(p.localizacao) : ''}</small></button>`).join('')}</div>
+          ${esc(p.descricao)}<br><small class="meta">${p.interno ? '<b>código interno</b> ' : ''}${esc(p.codigo)}${p.original && !p.interno ? ' · orig. ' + esc(p.original) : ''}${p.localizacao ? ' · ' + esc(p.localizacao) : ''}</small></button>`).join('')}</div>
         <button class="btn btn-sec" onclick="fecharModal(); cancelar();">Cancelar</button>`);
       return;
     }
