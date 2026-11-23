@@ -300,13 +300,16 @@
     }
   }
 
-  async function sincronizarContagens() {
+  // completo = true: baixa todas as contagens e substitui a cópia do celular
+  // (assim, o que foi apagado na planilha também some do celular).
+  async function sincronizarContagens(completo) {
     if (sincronizando) return;
     sincronizando = true;
     try {
-      const r = await api({ acao: 'contagens', desde: contDesde }, 45000);
+      const r = await api({ acao: 'contagens', desde: completo ? 0 : contDesde }, 45000);
+      if (completo) contMap.clear();
       for (const c of r.itens) contMap.set(semZeros(c[0]), { quantidade: c[1], usuario: c[2], dataHora: c[3], versao: c[4], localizacao: c[5] });
-      if (r.agora > contDesde) contDesde = r.agora;
+      if (completo) contDesde = r.agora; else if (r.agora > contDesde) contDesde = r.agora;
     } catch (e) {} finally { sincronizando = false; }
   }
 
@@ -334,7 +337,7 @@
     modal(`<h2>Quem está contando?</h2>
       <input id="nomeUsuario" placeholder="Seu nome" value="${esc(usuario)}" autocomplete="name">
       <button class="btn btn-pri" onclick="confirmarUsuario()">Começar</button>
-      ${obrigatorio ? '' : '<button class="btn btn-sec" onclick="fecharModal(); carregarCatalogo(true); contDesde = 0; sincronizarContagens();">⟳ Atualizar lista de produtos</button>'}
+      ${obrigatorio ? '' : '<button class="btn btn-sec" onclick="fecharModal(); carregarCatalogo(true); sincronizarContagens(true); carregarUltimos();">⟳ Atualizar produtos e contagens</button>'}
       ${obrigatorio ? '' : '<button class="btn btn-sec" onclick="fecharModal()">Cancelar</button>'}`);
     setTimeout(() => $('nomeUsuario').focus(), 100);
     $('nomeUsuario').addEventListener('keydown', e => { if (e.key === 'Enter') confirmarUsuario(); });
@@ -543,12 +546,20 @@
     gravarJSON(chaveUlt(), l);
     mostrarUltimos(l);
   }
+  // Mostra o que está no celular e depois confere com a planilha
+  // (mantém só os lançamentos ainda não enviados + o que a planilha tem).
   function carregarUltimos() {
-    const l = lerJSON(chaveUlt(), null);
-    if (l && l.length) { mostrarUltimos(l); return; }
+    const l = lerJSON(chaveUlt(), []) || [];
+    mostrarUltimos(l);
     api({ acao: 'ultimos', usuario: usuario })
-      .then(s => { gravarJSON(chaveUlt(), s); mostrarUltimos(s); })
-      .catch(() => mostrarUltimos([]));
+      .then(srv => {
+        const pend = (lerJSON(chaveUlt(), []) || []).filter(u => u.pendente && fila.some(i => i.id === u.id));
+        let nova = pend.slice();
+        for (const u of srv) if (!nova.some(x => semZeros(x.codigo) === semZeros(u.codigo))) nova.push(u);
+        nova = nova.slice(0, 3);
+        gravarJSON(chaveUlt(), nova); mostrarUltimos(nova);
+      })
+      .catch(() => {});
   }
   function mostrarUltimos(lista) {
     if (!lista || !lista.length) { $('listaUltimos').innerHTML = '<div class="meta">Nenhum ainda.</div>'; return; }
@@ -629,10 +640,11 @@
   processarFila();
   setTimeout(mostrarConflitos, 300);
   carregarCatalogo(false);
-  sincronizarContagens();
-  setInterval(sincronizarContagens, 20000);
+  sincronizarContagens(true);
+  setInterval(() => sincronizarContagens(false), 20000);     // novidades a cada 20 s
+  setInterval(() => sincronizarContagens(true), 120000);     // cópia completa a cada 2 min
   setInterval(() => carregarCatalogo(false), 10 * 60000);   // renova a lista se tiver mais de 2 h
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) sincronizarContagens(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { sincronizarContagens(true); if (usuario) carregarUltimos(); } });
 </script>
 </body>
 </html>
