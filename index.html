@@ -67,7 +67,7 @@
   <div class="card" id="etapaCodigo">
     <label>Código do produto</label>
     <div class="row">
-      <input id="codigo" autocomplete="off" autocapitalize="characters" placeholder="Digite ou escaneie" enterkeyhint="search">
+      <input id="codigo" autocomplete="off" autocapitalize="characters" placeholder="Código ou cód. original" enterkeyhint="search">
       <button class="btn btn-pri btn-ico" onclick="buscar()">OK</button>
     </div>
     <button class="btn btn-sec" style="margin-top:10px" id="btnCamera" onclick="alternarCamera()">📷 Ler código de barras</button>
@@ -77,6 +77,7 @@
   <div class="card hide" id="etapaQtd">
     <p class="prod-desc" id="pDesc"></p>
     <div class="meta">Código: <b id="pCod"></b></div>
+    <div class="meta hide" id="pOrigLinha">Cód. original: <b id="pOrig"></b></div>
     <label style="margin-top:12px" for="loc">Localização</label>
     <input id="loc" type="text" autocomplete="off" autocapitalize="characters" enterkeyhint="next" placeholder="Informe a localização" style="font-size:18px; text-transform:uppercase">
     <div class="meta hide" id="locAviso" style="margin-top:4px"></div>
@@ -253,31 +254,37 @@
   window.addEventListener('beforeunload', e => { if (fila.length) { e.preventDefault(); e.returnValue = ''; } });
 
   /* ---------- Lista de produtos e contagens no celular (consulta instantânea) ----------
-     A lista de produtos é baixada uma vez (renovada a cada 12 h) e as contagens de todos
+     A lista de produtos é baixada uma vez (renovada a cada 2 h) e as contagens de todos
      são sincronizadas a cada 20 s. Na hora de gravar, a planilha confere de novo se
      alguém contou o mesmo item, então nenhum lançamento é sobrescrito sem aviso. */
-  let catMap = new Map();
+  let catMap = new Map(), origMap = new Map();
+  const chaveOrig = s => semZeros(String(s).toUpperCase().replace(/[^A-Z0-9]/g, ''));
   const contMap = new Map();
   let contDesde = 0, sincronizando = false;
 
   function montarCatalogo(c) {
-    catMap = new Map();
+    catMap = new Map(); origMap = new Map();
     for (const it of c.itens) {
-      const reg = { codigo: it[0], descricao: it[1], localizacao: it[2] };
+      const reg = { codigo: it[0], descricao: it[1], localizacao: it[2], original: it[4] || '' };
       catMap.set(semZeros(it[0]), reg);
       if (it[3]) catMap.set(semZeros(it[3]), reg);
+      if (it[4]) {
+        const k = chaveOrig(it[4]);
+        if (k) { if (!origMap.has(k)) origMap.set(k, []); origMap.get(k).push(reg); }
+      }
     }
   }
 
   async function carregarCatalogo(forcar) {
-    const salvo = lerJSON('inv_cat', null);
-    if (!forcar && salvo && salvo.itens && Date.now() - salvo.gerado < 12 * 3600 * 1000) { montarCatalogo(salvo); return; }
+    const salvo = lerJSON('inv_cat2', null);
+    if (!forcar && salvo && salvo.itens && Date.now() - salvo.gerado < 2 * 3600 * 1000) { montarCatalogo(salvo); return; }
     const st = $('statusLista');
+    if (salvo && salvo.itens && !catMap.size) montarCatalogo(salvo);   // usa a lista anterior enquanto baixa a nova
     try {
-      st.textContent = '⬇️ Baixando lista de produtos… (só na primeira vez do dia)'; st.classList.remove('hide');
+      if (!catMap.size || forcar) { st.textContent = '⬇️ Atualizando lista de produtos…'; st.classList.remove('hide'); }
       const c = await api({ acao: 'catalogo' }, 120000);
       montarCatalogo(c);
-      gravarJSON('inv_cat', c);
+      gravarJSON('inv_cat2', c);
       st.classList.add('hide');
       if (forcar) toast('Lista atualizada: ' + c.itens.length + ' produtos');
     } catch (e) {
@@ -298,10 +305,15 @@
   }
 
   function buscarLocal(cod) {
-    const p = catMap.get(semZeros(cod));
+    let p = catMap.get(semZeros(cod));
+    if (!p) {
+      const lista = origMap.get(chaveOrig(cod)) || [];
+      if (lista.length > 1) return { multiplos: lista, codigoDigitado: cod };
+      if (lista.length === 1) p = lista[0];
+    }
     const c = contMap.get(semZeros(p ? p.codigo : cod)) || null;
     return {
-      encontrado: !!p, codigo: p ? p.codigo : cod, descricao: p ? p.descricao : '',
+      encontrado: !!p, codigo: p ? p.codigo : cod, descricao: p ? p.descricao : '', original: p ? p.original : '',
       localizacao: (c && c.localizacao) ? c.localizacao : (p ? p.localizacao : ''),
       localSistema: p ? p.localizacao : '', saldo: null, contagem: c
     };
@@ -355,7 +367,18 @@
     }
   }
 
+  function escolherDaLista(i) { const reg = window.__lista[i]; fecharModal(); bip(true); receberProduto(buscarLocal(reg.codigo)); }
+
   function receberProduto(r) {
+    if (r.multiplos) {
+      window.__lista = r.multiplos;
+      modal(`<h2>Escolha o produto</h2>
+        <p>O código original <b>${esc(r.codigoDigitado)}</b> corresponde a <b>${r.multiplos.length}</b> produtos:</p>
+        <div class="lista-fila">${r.multiplos.map((p, i) => `<button class="btn btn-sec" style="text-align:left" onclick="escolherDaLista(${i})">
+          ${esc(p.descricao)}<br><small class="meta">${esc(p.codigo)}${p.localizacao ? ' · ' + esc(p.localizacao) : ''}</small></button>`).join('')}</div>
+        <button class="btn btn-sec" onclick="fecharModal(); cancelar();">Cancelar</button>`);
+      return;
+    }
     atual = r; modo = 'novo'; versao = ''; alvoPendente = null;
     if (!r.encontrado) {
       bip(false);
@@ -406,6 +429,8 @@
     $('etapaQtd').classList.remove('hide');
     $('pDesc').textContent = atual.descricao || '(sem descrição – será preenchida pela planilha)';
     $('pCod').textContent = atual.codigo;
+    $('pOrig').textContent = atual.original || '';
+    $('pOrigLinha').classList.toggle('hide', !atual.original);
     $('loc').value = atual.localizacao || '';
     const sis = atual.localSistema;
     $('locAviso').classList.toggle('hide', !!(atual.localizacao && (!sis || sis === atual.localizacao)));
@@ -596,6 +621,7 @@
   carregarCatalogo(false);
   sincronizarContagens();
   setInterval(sincronizarContagens, 20000);
+  setInterval(() => carregarCatalogo(false), 10 * 60000);   // renova a lista se tiver mais de 2 h
   document.addEventListener('visibilitychange', () => { if (!document.hidden) sincronizarContagens(); });
 </script>
 </body>
