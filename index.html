@@ -67,7 +67,8 @@
   <div class="card" id="etapaCodigo">
     <label>Código do produto</label>
     <div class="row">
-      <input id="codigo" autocomplete="off" autocapitalize="characters" placeholder="Código ou cód. original" enterkeyhint="search">
+      <input id="codigo" autocomplete="off" autocapitalize="characters" placeholder="Código ou cód. original" enterkeyhint="go" inputmode="numeric" pattern="[0-9]*">
+      <button class="btn btn-sec btn-ico" id="btnTeclado" type="button" onmousedown="event.preventDefault()" onclick="alternarTeclado()">ABC</button>
       <button class="btn btn-pri btn-ico" onclick="buscar()">OK</button>
     </div>
     <button class="btn btn-sec" style="margin-top:10px" id="btnCamera" onclick="alternarCamera()">📷 Ler código de barras</button>
@@ -522,6 +523,7 @@
     $('etapaQtd').classList.add('hide');
     $('etapaCodigo').classList.remove('hide');
     $('codigo').value = '';
+    definirTeclado(true);
     if (depoisDeSalvar && usouCamera) ligarCamera(); else { usouCamera = false; focarCodigo(); }
   }
 
@@ -613,6 +615,19 @@
 
   /* ---------- Utilitários ---------- */
   function focarCodigo() { setTimeout(() => $('codigo').focus(), 100); }
+
+  /* Teclado do campo código: numérico por padrão; ABC para códigos originais com letras. */
+  function definirTeclado(numerico) {
+    const c = $('codigo');
+    c.setAttribute('inputmode', numerico ? 'numeric' : 'text');
+    if (numerico) c.setAttribute('pattern', '[0-9]*'); else c.removeAttribute('pattern');
+    $('btnTeclado').textContent = numerico ? 'ABC' : '123';
+  }
+  function alternarTeclado() {
+    const c = $('codigo');
+    definirTeclado(c.getAttribute('inputmode') !== 'numeric');
+    c.blur(); setTimeout(() => c.focus(), 60);   // reabre o teclado já no novo modo
+  }
   function modal(html) { $('modal').innerHTML = html; $('modalWrap').classList.remove('hide'); }
   function fecharModal() { $('modalWrap').classList.add('hide'); setTimeout(mostrarConflitos, 50); }
   function carregando(s) { $('carregando').style.display = s ? 'flex' : 'none'; }
